@@ -261,6 +261,39 @@ export const SourceManager: React.FC<SourceManagerProps> = ({ onClose }) => {
     setNotice({ kind: 'ok', text: '已生成 JSON，可全选复制保存' });
   };
 
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setNotice({ kind: 'error', text: '文件太大（最多 2MB）' });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setJsonText(String(reader.result || ''));
+      setNotice({
+        kind: 'ok',
+        text: `已读取 ${file.name}，点「导入并合并」或「导入并替换」完成导入`,
+      });
+    };
+    reader.onerror = () =>
+      setNotice({ kind: 'error', text: '文件读取失败，请重试' });
+    reader.readAsText(file);
+  };
+
+  const handleDownload = () => {
+    const blob = new Blob([JSON.stringify(toApiSiteMap(sources), null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'sources.json';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleImport = (mode: 'merge' | 'replace') => {
     if (!jsonText.trim()) {
       setNotice({ kind: 'error', text: '请先粘贴 JSON' });
@@ -533,6 +566,23 @@ export const SourceManager: React.FC<SourceManagerProps> = ({ onClose }) => {
             </div>
             {showJson && (
               <>
+                <div className='grid grid-cols-2 gap-2'>
+                  <label className='px-2 py-2 text-xs font-medium text-center text-green-700 dark:text-green-300 border border-green-300 dark:border-green-700 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-md transition-colors cursor-pointer'>
+                    上传 JSON 文件
+                    <input
+                      type='file'
+                      accept='.json,.txt,application/json,text/plain'
+                      className='hidden'
+                      onChange={handleFile}
+                    />
+                  </label>
+                  <button
+                    onClick={handleDownload}
+                    className='px-2 py-2 text-xs font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors'
+                  >
+                    下载备份文件
+                  </button>
+                </div>
                 <textarea
                   className={`${inputClass} font-mono text-xs h-36`}
                   placeholder={
