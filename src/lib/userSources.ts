@@ -15,7 +15,7 @@ export const USER_SOURCES_STORAGE_KEY = 'ys_user_sources';
 export const USER_SOURCES_EVENT = 'ysUserSourcesUpdated';
 export const OPEN_SOURCE_MANAGER_EVENT = 'ysOpenSourceManager';
 
-export const MAX_USER_SOURCES = 50;
+export const MAX_USER_SOURCES = 999;
 export const MAX_SOURCE_NAME_LEN = 40;
 export const MAX_SOURCE_URL_LEN = 300;
 export const MAX_SOURCE_KEY_LEN = 40;
