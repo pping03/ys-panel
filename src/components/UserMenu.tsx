@@ -12,10 +12,11 @@ import {
   X,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { getAuthInfoFromBrowserCookie } from '@/lib/auth';
+import { OPEN_SOURCE_MANAGER_EVENT } from '@/lib/userSources';
 
 import { SourceManager } from './SourceManager';
 
@@ -51,6 +52,23 @@ export const UserMenu: React.FC = () => {
   // 确保组件已挂载
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  // 其他页面（搜索页、播放页的提示）可以请求打开播放源管理。
+  // 页面上有手机端和桌面端两个用户菜单，只让当前可见的那个响应
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handleOpenRequest = () => {
+      const el = rootRef.current;
+      if (!el || el.getClientRects().length === 0) return;
+      setIsOpen(false);
+      setIsSettingsOpen(false);
+      setIsSourcesOpen(true);
+    };
+    window.addEventListener(OPEN_SOURCE_MANAGER_EVENT, handleOpenRequest);
+    return () => {
+      window.removeEventListener(OPEN_SOURCE_MANAGER_EVENT, handleOpenRequest);
+    };
   }, []);
 
   // 获取认证信息和存储类型
@@ -719,7 +737,7 @@ export const UserMenu: React.FC = () => {
 
   return (
     <>
-      <div className='relative'>
+      <div className='relative' ref={rootRef}>
         <button
           onClick={handleMenuClick}
           className='w-10 h-10 p-2 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-200/50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors'

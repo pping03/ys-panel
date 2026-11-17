@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
 
 import { ApiSite, getCacheTime, getConfig } from '@/lib/config';
-import { searchFromApi } from '@/lib/downstream';
+import { searchFromApiDetailed } from '@/lib/downstream';
 import { isTitleRelevantToQuery } from '@/lib/searchFilter';
+import {
+  failureResult,
+  SourceProbeResult,
+  SourceSearchStatus,
+} from '@/lib/sourceProbe';
 import { SearchResult } from '@/lib/types';
 import {
   NO_STORE_HEADERS,
@@ -13,22 +18,42 @@ import { yellowWords } from '@/lib/yellow';
 
 export const runtime = 'edge';
 
+interface SiteSearchOutcome {
+  site: ApiSite;
+  items: SearchResult[];
+  latencyMs: number;
+  probe: SourceProbeResult;
+}
+
 async function searchSiteWithTimeout(
   site: ApiSite,
   query: string
-): Promise<{ items: SearchResult[]; latencyMs: number }> {
+): Promise<SiteSearchOutcome> {
   const start = Date.now();
-  const timeoutPromise = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error('Timeout')), 4500)
-  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('Timeout')), 4500);
+  });
   try {
-    const items = await Promise.race([
-      searchFromApi(site, query),
+    const { results, probe } = await Promise.race([
+      searchFromApiDetailed(site, query),
       timeoutPromise,
     ]);
-    return { items: items || [], latencyMs: Date.now() - start };
+    return {
+      site,
+      items: results || [],
+      latencyMs: probe.ok ? Date.now() - start : Infinity,
+      probe,
+    };
   } catch {
-    return { items: [], latencyMs: Infinity };
+    return {
+      site,
+      items: [],
+      latencyMs: Infinity,
+      probe: failureResult('timeout'),
+    };
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -48,20 +73,27 @@ async function runSearch(
   const config = await getConfig();
 
   try {
-    const settledResults = await Promise.allSettled(
+    const outcomes = await Promise.all(
       apiSites.map((site) => searchSiteWithTimeout(site, query))
     );
 
-    const successfulResults = settledResults
-      .filter(
-        (
-          res
-        ): res is PromiseFulfilledResult<{
-          items: SearchResult[];
-          latencyMs: number;
-        }> => res.status === 'fulfilled' && res.value.items.length > 0
-      )
-      .map((res) => res.value)
+    // 每个播放源本次请求的状态：区分「接口不可用」与「接口正常但没搜到」
+    const sourceStatus: SourceSearchStatus[] = outcomes.map((o) => {
+      const entry: SourceSearchStatus = {
+        key: o.site.key,
+        name: o.site.name,
+        ok: o.probe.ok,
+        count: o.items.length,
+        status: o.probe.status,
+      };
+      if (!o.probe.ok) entry.error = o.probe.message;
+      return entry;
+    });
+    const allFailed =
+      sourceStatus.length > 0 && sourceStatus.every((s) => !s.ok);
+
+    const successfulResults = outcomes
+      .filter((o) => o.items.length > 0)
       .sort((a, b) => a.latencyMs - b.latencyMs);
 
     let flattenedResults = successfulResults.flatMap((res) => res.items);
@@ -78,7 +110,11 @@ async function runSearch(
       });
     }
 
-    return NextResponse.json({ results: flattenedResults }, { headers });
+    // 播放源全部失败时不缓存，免得恢复后还读到旧的空结果
+    return NextResponse.json(
+      { results: flattenedResults, sourceStatus },
+      { headers: allFailed ? NO_STORE_HEADERS : headers }
+    );
   } catch (error) {
     return NextResponse.json({ error: '搜索失败' }, { status: 500 });
   }
@@ -90,7 +126,7 @@ export async function GET(request: Request) {
   const headers = cacheHeaders(await getCacheTime());
 
   if (!query) {
-    return NextResponse.json({ results: [] }, { headers });
+    return NextResponse.json({ results: [], sourceStatus: [] }, { headers });
   }
 
   const config = await getConfig();
@@ -104,7 +140,10 @@ export async function POST(request: Request) {
   const query = typeof body.q === 'string' ? body.q.trim() : '';
 
   if (!query) {
-    return NextResponse.json({ results: [] }, { headers: NO_STORE_HEADERS });
+    return NextResponse.json(
+      { results: [], sourceStatus: [] },
+      { headers: NO_STORE_HEADERS }
+    );
   }
 
   const apiSites = await resolveApiSites(body.sources);

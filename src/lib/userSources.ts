@@ -13,6 +13,7 @@ export interface UserSource {
 
 export const USER_SOURCES_STORAGE_KEY = 'ys_user_sources';
 export const USER_SOURCES_EVENT = 'ysUserSourcesUpdated';
+export const OPEN_SOURCE_MANAGER_EVENT = 'ysOpenSourceManager';
 
 export const MAX_USER_SOURCES = 50;
 export const MAX_SOURCE_NAME_LEN = 40;
@@ -205,6 +206,12 @@ export function parseApiSiteJson(text: string): any[] {
 }
 
 // ---------------- 浏览器端 ----------------
+
+/** 让页面右上角的用户菜单打开「播放源管理」面板 */
+export function openSourceManager(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(OPEN_SOURCE_MANAGER_EVENT));
+}
 
 export function loadUserSources(): UserSource[] {
   if (typeof window === 'undefined') return [];

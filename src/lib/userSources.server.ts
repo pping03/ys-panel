@@ -4,7 +4,7 @@ import { ApiSite, getAvailableApiSites } from '@/lib/config';
 import { sanitizeUserSources } from '@/lib/userSources';
 
 // 仅供本地测试用：默认严格拦截本机 / 内网地址
-function allowPrivateSources(): boolean {
+export function allowPrivateSources(): boolean {
   return process.env.YS_ALLOW_PRIVATE_SOURCES === 'true';
 }
 

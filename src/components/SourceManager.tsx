@@ -1,8 +1,14 @@
 'use client';
 
 import { Plus, Trash2, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
+import {
+  isTvboxShape,
+  parseJsonLoose,
+  SourceProbeResult,
+  TVBOX_MESSAGE,
+} from '@/lib/sourceProbe';
 import {
   loadUserSources,
   MAX_SOURCE_NAME_LEN,
@@ -22,7 +28,51 @@ interface SourceManagerProps {
 const inputClass =
   'w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500';
 
-type Notice = { kind: 'ok' | 'error'; text: string } | null;
+type Notice = { kind: 'ok' | 'warn' | 'error'; text: string } | null;
+
+interface CheckState {
+  loading: boolean;
+  result?: SourceProbeResult;
+}
+
+const CHECK_CONCURRENCY = 4;
+
+const noticeClass: Record<'ok' | 'warn' | 'error', string> = {
+  ok: 'text-green-700 bg-green-50 border-green-200 dark:text-green-300 dark:bg-green-900/20 dark:border-green-800',
+  warn: 'text-amber-800 bg-amber-50 border-amber-200 dark:text-amber-200 dark:bg-amber-900/20 dark:border-amber-800',
+  error:
+    'text-red-600 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-900/20 dark:border-red-800',
+};
+
+/** 请求服务端测试一个接口地址，网络或登录问题也折算成一条失败结果 */
+async function requestSourceCheck(api: string): Promise<SourceProbeResult> {
+  try {
+    const res = await fetch('/api/source-check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ api }),
+    });
+    if (res.status === 401) {
+      return {
+        status: 'unreachable',
+        ok: false,
+        message: '登录已失效，请重新登录后再测试',
+      };
+    }
+    const data = await res.json();
+    if (data && typeof data.status === 'string') {
+      return data as SourceProbeResult;
+    }
+  } catch {
+    // 落到下面的统一提示
+  }
+  return {
+    status: 'unreachable',
+    ok: false,
+    message: '测试请求没有成功，请稍后再试',
+  };
+}
 
 export const SourceManager: React.FC<SourceManagerProps> = ({ onClose }) => {
   const [sources, setSources] = useState<UserSource[]>([]);
@@ -36,16 +86,61 @@ export const SourceManager: React.FC<SourceManagerProps> = ({ onClose }) => {
   const [showJson, setShowJson] = useState(false);
   const [jsonText, setJsonText] = useState('');
 
-  useEffect(() => {
-    setSources(loadUserSources());
+  // 测试结果按接口地址记录，不写入 localStorage
+  const [checks, setChecks] = useState<Record<string, CheckState>>({});
+  const mountedRef = useRef(true);
+
+  const runChecks = useCallback(async (apis: string[]) => {
+    const queue = Array.from(new Set(apis.filter(Boolean)));
+    if (queue.length === 0) return {} as Record<string, SourceProbeResult>;
+
+    setChecks((prev) => {
+      const next = { ...prev };
+      queue.forEach((item) => {
+        next[item] = { loading: true, result: prev[item]?.result };
+      });
+      return next;
+    });
+
+    const done: Record<string, SourceProbeResult> = {};
+    const worker = async () => {
+      let current = queue.shift();
+      while (current) {
+        const target = current;
+        const result = await requestSourceCheck(target);
+        done[target] = result;
+        if (mountedRef.current) {
+          setChecks((prev) => ({
+            ...prev,
+            [target]: { loading: false, result },
+          }));
+        }
+        current = queue.shift();
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(CHECK_CONCURRENCY, queue.length) }, worker)
+    );
+    return done;
   }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const stored = loadUserSources();
+    setSources(stored);
+    // 打开面板时自动测一遍，已有的播放源哪个不可用一眼能看到
+    runChecks(stored.map((s) => s.api));
+    return () => {
+      mountedRef.current = false;
+    };
+  }, [runChecks]);
 
   const update = (next: UserSource[]) => {
     setSources(next);
     setDirty(true);
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     const trimmedName = name.trim();
     if (!trimmedName) {
       setNotice({ kind: 'error', text: '请填写名称' });
@@ -83,14 +178,31 @@ export const SourceManager: React.FC<SourceManagerProps> = ({ onClose }) => {
       setNotice({ kind: 'error', text: errors[0] });
       return;
     }
+    const addedApi = api.trim();
     update(cleaned);
     setName('');
     setApi('');
     setDetail('');
     setNotice({
       kind: 'ok',
-      text: '已加入列表，点「保存并应用」后生效',
+      text: '已加入列表，正在测试接口是否可用…',
     });
+
+    // 加入后自动测试：不可用也保留在列表里，但明确标出来
+    const results = await runChecks([addedApi]);
+    if (!mountedRef.current) return;
+    const result = results[addedApi];
+    if (result && !result.ok) {
+      setNotice({
+        kind: 'warn',
+        text: `「${trimmedName}」已加入列表，但测试未通过：${result.message}。这样的播放源搜不出内容，建议删除或换成苹果CMS V10 的 JSON 接口`,
+      });
+    } else {
+      setNotice({
+        kind: 'ok',
+        text: `「${trimmedName}」测试通过，点「保存并应用」后生效`,
+      });
+    }
   };
 
   const handleToggle = (key: string) => {
@@ -117,14 +229,30 @@ export const SourceManager: React.FC<SourceManagerProps> = ({ onClose }) => {
     setSources(cleaned);
     setDirty(false);
     const enabled = cleaned.filter((s) => !s.disabled).length;
-    setNotice(
-      errors.length > 0
-        ? { kind: 'error', text: `已保存，但有问题：${errors.join('；')}` }
-        : {
-            kind: 'ok',
-            text: `已保存并应用：共 ${cleaned.length} 个播放源，启用 ${enabled} 个。新的搜索立即生效`,
-          }
-    );
+    const failing = cleaned.filter(
+      (s) => !s.disabled && checks[s.api]?.result?.ok === false
+    ).length;
+    if (errors.length > 0) {
+      setNotice({
+        kind: 'error',
+        text: `已保存，但有问题：${errors.join('；')}`,
+      });
+    } else if (failing > 0) {
+      setNotice({
+        kind: 'warn',
+        text: `已保存并应用：共 ${cleaned.length} 个播放源，启用 ${enabled} 个，其中 ${failing} 个测试未通过（标红的那些），它们搜不出内容`,
+      });
+    } else {
+      setNotice({
+        kind: 'ok',
+        text: `已保存并应用：共 ${cleaned.length} 个播放源，启用 ${enabled} 个。新的搜索立即生效`,
+      });
+    }
+  };
+
+  const handleTestAll = () => {
+    setNotice(null);
+    runChecks(sources.map((s) => s.api));
   };
 
   const handleExport = () => {
@@ -138,6 +266,22 @@ export const SourceManager: React.FC<SourceManagerProps> = ({ onClose }) => {
       setNotice({ kind: 'error', text: '请先粘贴 JSON' });
       return;
     }
+    const pasted = jsonText.trim();
+    if (/^https?:\/\/\S+$/i.test(pasted)) {
+      setNotice({
+        kind: 'error',
+        text: '这里要粘贴 JSON 内容，不是网址。单个接口地址请在上面的「添加播放源」里填',
+      });
+      return;
+    }
+    if (isTvboxShape(parseJsonLoose(pasted))) {
+      setNotice({
+        kind: 'error',
+        text: `没有导入：${TVBOX_MESSAGE}。这里只接受 api_site 格式（每项含 api 和 name）`,
+      });
+      return;
+    }
+
     let items: unknown[];
     try {
       items = parseApiSiteJson(jsonText);
@@ -179,6 +323,8 @@ export const SourceManager: React.FC<SourceManagerProps> = ({ onClose }) => {
         `已导入 ${incoming.sources.length} 个，点「保存并应用」后生效` +
         (problems.length > 0 ? `；跳过：${problems.join('；')}` : ''),
     });
+    // 导入的也自动测一遍，不可用的会在列表里标出来
+    runChecks(incoming.sources.map((s) => s.api));
   };
 
   const handleClose = () => {
@@ -220,11 +366,21 @@ export const SourceManager: React.FC<SourceManagerProps> = ({ onClose }) => {
               <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
                 我的播放源（{sources.length}/{MAX_USER_SOURCES}）
               </h4>
-              {dirty && (
-                <span className='text-xs text-amber-600 dark:text-amber-400'>
-                  有未保存的修改
-                </span>
-              )}
+              <div className='flex items-center gap-3'>
+                {dirty && (
+                  <span className='text-xs text-amber-600 dark:text-amber-400'>
+                    有未保存的修改
+                  </span>
+                )}
+                {sources.length > 0 && (
+                  <button
+                    onClick={handleTestAll}
+                    className='text-xs text-blue-600 dark:text-blue-400 hover:underline'
+                  >
+                    全部测试
+                  </button>
+                )}
+              </div>
             </div>
 
             {sources.length === 0 ? (
@@ -233,49 +389,84 @@ export const SourceManager: React.FC<SourceManagerProps> = ({ onClose }) => {
               </p>
             ) : (
               <ul className='space-y-2'>
-                {sources.map((source) => (
-                  <li
-                    key={source.key}
-                    className='flex items-center gap-3 border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2'
-                  >
-                    <div className='flex-1 min-w-0'>
-                      <div
-                        className={`text-sm font-medium truncate ${
-                          source.disabled
-                            ? 'text-gray-400 dark:text-gray-500'
-                            : 'text-gray-800 dark:text-gray-200'
-                        }`}
+                {sources.map((source) => {
+                  const check = checks[source.api];
+                  const failed = check?.result?.ok === false;
+                  return (
+                    <li
+                      key={source.key}
+                      className={`flex items-center gap-2 border rounded-md px-3 py-2 ${
+                        failed
+                          ? 'border-red-300 dark:border-red-800'
+                          : 'border-gray-200 dark:border-gray-700'
+                      }`}
+                    >
+                      <div className='flex-1 min-w-0'>
+                        <div
+                          className={`text-sm font-medium truncate ${
+                            source.disabled
+                              ? 'text-gray-400 dark:text-gray-500'
+                              : 'text-gray-800 dark:text-gray-200'
+                          }`}
+                        >
+                          {source.name}
+                        </div>
+                        <div className='text-xs text-gray-500 dark:text-gray-400 truncate'>
+                          {source.api}
+                        </div>
+                        {check && (
+                          <div
+                            role='status'
+                            className={`mt-0.5 text-xs break-words ${
+                              check.loading
+                                ? 'text-gray-500 dark:text-gray-400'
+                                : failed
+                                ? 'text-red-600 dark:text-red-400'
+                                : 'text-green-600 dark:text-green-400'
+                            }`}
+                          >
+                            {check.loading
+                              ? '测试中…'
+                              : check.result
+                              ? `${failed ? '不可用：' : ''}${
+                                  check.result.message
+                                }`
+                              : ''}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => runChecks([source.api])}
+                        disabled={check?.loading}
+                        className='shrink-0 px-2 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-md hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 transition-colors'
                       >
-                        {source.name}
-                      </div>
-                      <div className='text-xs text-gray-500 dark:text-gray-400 truncate'>
-                        {source.api}
-                      </div>
-                    </div>
-                    <label
-                      className='flex items-center cursor-pointer shrink-0'
-                      title={source.disabled ? '已停用' : '已启用'}
-                    >
-                      <div className='relative'>
-                        <input
-                          type='checkbox'
-                          className='sr-only peer'
-                          checked={!source.disabled}
-                          onChange={() => handleToggle(source.key)}
-                        />
-                        <div className='w-11 h-6 bg-gray-300 rounded-full peer-checked:bg-green-500 transition-colors dark:bg-gray-600'></div>
-                        <div className='absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-5'></div>
-                      </div>
-                    </label>
-                    <button
-                      onClick={() => handleDelete(source.key)}
-                      className='shrink-0 w-8 h-8 p-1.5 rounded-full text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors'
-                      aria-label={`删除 ${source.name}`}
-                    >
-                      <Trash2 className='w-full h-full' />
-                    </button>
-                  </li>
-                ))}
+                        测试
+                      </button>
+                      <label
+                        className='flex items-center cursor-pointer shrink-0'
+                        title={source.disabled ? '已停用' : '已启用'}
+                      >
+                        <div className='relative'>
+                          <input
+                            type='checkbox'
+                            className='sr-only peer'
+                            checked={!source.disabled}
+                            onChange={() => handleToggle(source.key)}
+                          />
+                          <div className='w-11 h-6 bg-gray-300 rounded-full peer-checked:bg-green-500 transition-colors dark:bg-gray-600'></div>
+                          <div className='absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-5'></div>
+                        </div>
+                      </label>
+                      <button
+                        onClick={() => handleDelete(source.key)}
+                        className='shrink-0 w-8 h-8 p-1.5 rounded-full text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors'
+                        aria-label={`删除 ${source.name}`}
+                      >
+                        <Trash2 className='w-full h-full' />
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -314,7 +505,9 @@ export const SourceManager: React.FC<SourceManagerProps> = ({ onClose }) => {
               onChange={(e) => setDetail(e.target.value)}
             />
             <p className='text-xs text-gray-500 dark:text-gray-400'>
-              接口需为苹果 CMS V10 的 JSON 接口。详情地址一般留空。
+              接口需为苹果 CMS V10 的 JSON 接口。TVBox /
+              影视仓的订阅地址（多仓、单仓
+              JSON）不是这种接口，网页端用不了。详情地址一般留空。
             </p>
             <button
               onClick={handleAdd}
@@ -384,9 +577,7 @@ export const SourceManager: React.FC<SourceManagerProps> = ({ onClose }) => {
             <div
               role='status'
               className={`text-sm p-2.5 rounded-md border ${
-                notice.kind === 'ok'
-                  ? 'text-green-700 bg-green-50 border-green-200 dark:text-green-300 dark:bg-green-900/20 dark:border-green-800'
-                  : 'text-red-600 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-900/20 dark:border-red-800'
+                noticeClass[notice.kind]
               }`}
             >
               {notice.text}

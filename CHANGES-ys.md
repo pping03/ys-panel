@@ -180,3 +180,22 @@
 - 没有用真实的播放源测过搜索与播放。
 - 内网拦截只看地址里的主机名，不做 DNS 解析：一个公网域名若解析到内网 IP，或接口跳转到内网地址，拦不住。站点在密码门之后且跑在 Vercel 上，风险有限。
 - 未在 Vercel 上构建过这一版。
+
+## 十、播放源测试与空结果提示（2026-11-17 修复）
+
+起因：把 TVBox 多仓订阅地址（`{"urls":[...]}`，指向带 `sites` / spider jar 的 TVBox 配置）当作接口地址填进了播放源。它不是苹果 CMS V10 的 JSON 接口，搜索自然没有结果，但页面只显示笼统的「未找到匹配结果 / 请检查网络连接」，看不出原因。
+
+- **新增接口 `POST /api/source-check`**（edge，位于密码门之后，不缓存）：收 `{api}`，按搜索时同样的形状请求 `<api>?ac=videolist&wd=`，6 秒超时，返回分类：
+  - `ok`：JSON 对象且含 `list` 数组（附带条数）
+  - `tvbox_subscription`：JSON 含 `urls` / `storeHouse` 数组，或 `sites` 加 `spider`
+  - `not_json`：返回的是网页、XML 等
+  - `bad_shape`：是 JSON 但没有 `list`
+  - `http_error`（带状态码）、`timeout`、`unreachable`、`invalid_url`
+  - 地址校验与 `userSources.server.ts` 相同；跳转改为手动跟随（最多 3 次），每一跳重新校验；正文最多读 2MB。
+- **播放源管理**：每个播放源有「测试」按钮，另有「全部测试」；打开面板、加入列表、JSON 导入后都会自动测试。不可用的仍可保留，但标红并写明原因；保存时提示有几个未通过。JSON 导入遇到 TVBox 订阅 / 配置形状直接拒绝并说明，粘贴的是网址也会提示。
+- **搜索接口**：`/api/search` 的响应新增 `sourceStatus`（每个播放源的 `key / name / ok / count / status / error`），原有 `results` 不变。播放源全部失败时这次响应不缓存。
+- **搜索页空结果**分三种：没有配置播放源、已配置的播放源全部请求失败（列出每个的原因）、真的没搜到（若部分失败会附带说明）。前两种带「打开播放源管理」按钮。
+- **播放页**（原先那句笼统提示实际出自这里）：找不到可播放内容时同样区分上述三种，不再一律提示检查网络；其余错误保持原样。
+- `src/lib/sourceProbe.ts` 为新增的共用判断逻辑；`downstream.ts` 新增 `searchFromApiDetailed`，原 `searchFromApi` 行为不变（顺带容忍接口返回带 BOM 的 JSON）。
+
+验证：`tsc --noEmit`、改动文件 `eslint`、`pnpm build` 通过；本地 `next start` 加本机模拟接口（仅测试实例开 `YS_ALLOW_PRIVATE_SOURCES=true`）逐项确认了以上分类与 `sourceStatus`，严格实例拦截本机地址且不发请求。界面未在浏览器中实测。

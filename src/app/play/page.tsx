@@ -21,9 +21,10 @@ import {
   saveSkipConfig,
   subscribeToDataUpdates,
 } from '@/lib/db.client';
+import { SourceSearchStatus } from '@/lib/sourceProbe';
 import { probeM3u8Latency } from '@/lib/sourceSpeedTest';
 import { SearchResult } from '@/lib/types';
-import { fetchWithUserSources } from '@/lib/userSources';
+import { fetchWithUserSources, openSourceManager } from '@/lib/userSources';
 import {
   getVideoResolutionFromM3u8,
   parseSpeedToKBs,
@@ -57,6 +58,15 @@ function PlayPageClient() {
   >('searching');
   const [loadingMessage, setLoadingMessage] = useState('正在搜索播放源...');
   const [error, setError] = useState<string | null>(null);
+  // 找不到可播放内容时的具体原因，用来给出对应的提示而不是笼统的「检查网络」
+  const [errorKind, setErrorKind] = useState<
+    'no_sources' | 'sources_failed' | 'not_found' | null
+  >(null);
+  const [failedSourceList, setFailedSourceList] = useState<
+    SourceSearchStatus[]
+  >([]);
+  // 最近一次搜索播放源时，每个播放源的请求状态（接口没返回则为 null）
+  const lastSourceStatusRef = useRef<SourceSearchStatus[] | null>(null);
   const [detail, setDetail] = useState<SearchResult | null>(null);
 
   // 收藏状态
@@ -710,9 +720,12 @@ function PlayPageClient() {
           throw new Error('搜索失败');
         }
         const data = await response.json();
+        lastSourceStatusRef.current = Array.isArray(data.sourceStatus)
+          ? data.sourceStatus
+          : null;
 
         // 处理搜索结果，根据规则过滤
-        const results = data.results.filter(
+        const results = (data.results || []).filter(
           (result: SearchResult) =>
             result.title.replaceAll(' ', '').toLowerCase() ===
               videoTitleRef.current.replaceAll(' ', '').toLowerCase() &&
@@ -760,7 +773,20 @@ function PlayPageClient() {
         sourcesInfo = await fetchSourceDetail(currentSource, currentId);
       }
       if (sourcesInfo.length === 0) {
-        setError('未找到匹配结果');
+        const statuses = lastSourceStatusRef.current;
+        const failed = (statuses || []).filter((s) => !s.ok);
+        if (statuses && statuses.length === 0) {
+          setErrorKind('no_sources');
+          setError('还没有配置播放源，所以没有可播放的内容');
+        } else if (statuses && failed.length === statuses.length) {
+          setErrorKind('sources_failed');
+          setFailedSourceList(failed);
+          setError(`已配置的 ${statuses.length} 个播放源全部请求失败`);
+        } else {
+          setErrorKind('not_found');
+          setFailedSourceList(failed);
+          setError('已配置的播放源里没有找到这部片');
+        }
         setLoading(false);
         return;
       }
@@ -2228,13 +2254,40 @@ function PlayPageClient() {
                   {error}
                 </p>
               </div>
+              {(errorKind === 'sources_failed' || errorKind === 'not_found') &&
+                failedSourceList.length > 0 && (
+                  <ul className='text-sm text-left text-gray-600 dark:text-gray-300 space-y-1'>
+                    {failedSourceList.slice(0, 5).map((s) => (
+                      <li key={s.key} className='break-words'>
+                        「{s.name}」：{s.error || '请求失败'}
+                      </li>
+                    ))}
+                    {failedSourceList.length > 5 && (
+                      <li>…还有 {failedSourceList.length - 5} 个</li>
+                    )}
+                  </ul>
+                )}
               <p className='text-sm text-gray-500 dark:text-gray-400'>
-                请检查网络连接或尝试刷新页面
+                {errorKind === 'no_sources'
+                  ? '请到「播放源管理」添加苹果CMS V10 的 JSON 接口后再试'
+                  : errorKind === 'sources_failed'
+                  ? '到「播放源管理」里点「测试」可以逐个查看原因'
+                  : errorKind === 'not_found'
+                  ? '可以换个片名搜索，或在「播放源管理」里添加其他播放源'
+                  : '请检查网络连接或尝试刷新页面'}
               </p>
             </div>
 
             {/* 操作按钮 */}
             <div className='space-y-3'>
+              {errorKind !== null && (
+                <button
+                  onClick={openSourceManager}
+                  className='w-full px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-medium hover:from-green-600 hover:to-emerald-700 transition-all duration-200 shadow-lg'
+                >
+                  ⚙️ 打开播放源管理
+                </button>
+              )}
               <button
                 onClick={() =>
                   videoTitle

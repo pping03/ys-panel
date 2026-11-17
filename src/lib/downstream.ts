@@ -1,4 +1,9 @@
 import { API_CONFIG, ApiSite, getConfig } from '@/lib/config';
+import {
+  classifyBodyWithData,
+  failureResult,
+  SourceProbeResult,
+} from '@/lib/sourceProbe';
 import { SearchResult } from '@/lib/types';
 import { cleanHtmlTags } from '@/lib/utils';
 
@@ -19,6 +24,17 @@ export async function searchFromApi(
   apiSite: ApiSite,
   query: string
 ): Promise<SearchResult[]> {
+  return (await searchFromApiDetailed(apiSite, query)).results;
+}
+
+/**
+ * 与 searchFromApi 相同，但额外返回这个播放源本次请求的状态，
+ * 用来区分「接口不可用」和「接口正常但没搜到」。
+ */
+export async function searchFromApiDetailed(
+  apiSite: ApiSite,
+  query: string
+): Promise<{ results: SearchResult[]; probe: SourceProbeResult }> {
   try {
     const apiBaseUrl = apiSite.api;
     const apiUrl =
@@ -29,25 +45,36 @@ export async function searchFromApi(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-    const response = await fetch(apiUrl, {
-      headers: API_CONFIG.search.headers,
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      return [];
+    let response: Response;
+    let bodyText = '';
+    try {
+      response = await fetch(apiUrl, {
+        headers: API_CONFIG.search.headers,
+        signal: controller.signal,
+      });
+      if (response.ok) {
+        bodyText = await response.text();
+      }
+    } catch (err) {
+      const aborted = err instanceof Error && err.name === 'AbortError';
+      return {
+        results: [],
+        probe: failureResult(aborted ? 'timeout' : 'unreachable'),
+      };
+    } finally {
+      clearTimeout(timeoutId);
     }
 
-    const data = await response.json();
-    if (
-      !data ||
-      !data.list ||
-      !Array.isArray(data.list) ||
-      data.list.length === 0
-    ) {
-      return [];
+    if (!response.ok) {
+      return {
+        results: [],
+        probe: failureResult('http_error', { httpStatus: response.status }),
+      };
+    }
+
+    const { probe, data } = classifyBodyWithData(bodyText);
+    if (!probe.ok || data.list.length === 0) {
+      return { results: [], probe };
     }
     // 处理第一页结果
     const results = data.list.map((item: ApiSearchItem) => {
@@ -181,9 +208,9 @@ export async function searchFromApi(
       });
     }
 
-    return results;
+    return { results, probe };
   } catch (error) {
-    return [];
+    return { results: [], probe: failureResult('bad_shape') };
   }
 }
 

@@ -13,10 +13,12 @@ import {
   subscribeToDataUpdates,
 } from '@/lib/db.client';
 import { isTitleRelevantToQuery } from '@/lib/searchFilter';
+import { SourceSearchStatus } from '@/lib/sourceProbe';
 import { SearchResult } from '@/lib/types';
 import {
   fetchWithUserSources,
   getEnabledUserSources,
+  openSourceManager,
   USER_SOURCES_EVENT,
 } from '@/lib/userSources';
 import { yellowWords } from '@/lib/yellow';
@@ -38,6 +40,12 @@ function SearchPageClient() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   // 是否一个播放源都没有（config.json 与本地自定义都为空）
   const [noSources, setNoSources] = useState(false);
+  // 最近一次搜索里每个播放源的请求状态；null 表示接口没有返回这项信息
+  const [sourceStatus, setSourceStatus] = useState<SourceSearchStatus[] | null>(
+    null
+  );
+  // 最近一次搜索请求本身是否失败（没连上本站，或登录失效）
+  const [searchFailed, setSearchFailed] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -201,10 +209,22 @@ function SearchPageClient() {
   const fetchSearchResults = async (query: string) => {
     try {
       setIsLoading(true);
+      setSearchFailed(null);
+      setSourceStatus(null);
       const response = await fetchWithUserSources('/api/search', {
         q: query.trim(),
       });
+      if (!response.ok) {
+        throw new Error(
+          response.status === 401
+            ? '登录已失效，请重新登录后再搜索'
+            : `搜索请求失败（HTTP ${response.status}），请稍后重试`
+        );
+      }
       const data = await response.json();
+      setSourceStatus(
+        Array.isArray(data.sourceStatus) ? data.sourceStatus : null
+      );
       let results: SearchResult[] = data.results || [];
       // 兜底过滤：浏览器可能还缓存着旧的接口响应（含无关条目），这里再筛一次
       results = results.filter((result) =>
@@ -249,10 +269,18 @@ function SearchPageClient() {
       setShowResults(true);
     } catch (error) {
       setSearchResults([]);
+      setSearchFailed(
+        error instanceof Error && /[\u4e00-\u9fa5]/.test(error.message)
+          ? error.message
+          : '搜索请求没有成功，请检查网络后重试'
+      );
+      setShowResults(true);
     } finally {
       setIsLoading(false);
     }
   };
+
+  const failedSources = (sourceStatus || []).filter((s) => !s.ok);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -308,8 +336,14 @@ function SearchPageClient() {
 
         {noSources && (
           <div className='max-w-2xl mx-auto -mt-4 mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200'>
-            还没有配置播放源，搜索不会有结果。请点右上角头像，进入「设置 →
-            播放源管理」添加后再搜索。
+            还没有配置播放源，搜索不会有结果。请先到{' '}
+            <button
+              onClick={openSourceManager}
+              className='underline font-medium'
+            >
+              播放源管理
+            </button>{' '}
+            添加后再搜索。
           </div>
         )}
 
@@ -391,7 +425,63 @@ function SearchPageClient() {
                     ))}
                 {searchResults.length === 0 && (
                   <div className='col-span-full text-center text-gray-500 py-8 dark:text-gray-400'>
-                    未找到相关结果
+                    {searchFailed ? (
+                      <p>{searchFailed}</p>
+                    ) : noSources ||
+                      (sourceStatus !== null && sourceStatus.length === 0) ? (
+                      <div className='space-y-3'>
+                        <p>没有配置播放源，所以没有结果。</p>
+                        <button
+                          onClick={openSourceManager}
+                          className='px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors'
+                        >
+                          打开播放源管理
+                        </button>
+                      </div>
+                    ) : failedSources.length > 0 &&
+                      sourceStatus !== null &&
+                      failedSources.length === sourceStatus.length ? (
+                      <div className='space-y-3 max-w-xl mx-auto'>
+                        <p className='text-red-600 dark:text-red-400'>
+                          已配置的 {sourceStatus.length}{' '}
+                          个播放源全部请求失败，所以没有结果。
+                        </p>
+                        <ul className='text-sm text-left space-y-1'>
+                          {failedSources.slice(0, 5).map((s) => (
+                            <li key={s.key} className='break-words'>
+                              「{s.name}」：{s.error || '请求失败'}
+                            </li>
+                          ))}
+                          {failedSources.length > 5 && (
+                            <li>…还有 {failedSources.length - 5} 个</li>
+                          )}
+                        </ul>
+                        <p className='text-sm'>
+                          到「播放源管理」里点「测试」可以逐个查看原因。
+                        </p>
+                        <button
+                          onClick={openSourceManager}
+                          className='px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors'
+                        >
+                          打开播放源管理
+                        </button>
+                      </div>
+                    ) : (
+                      <div className='space-y-2'>
+                        <p>未找到匹配结果</p>
+                        {failedSources.length > 0 && (
+                          <p className='text-sm'>
+                            另有 {failedSources.length} 个播放源请求失败（
+                            {failedSources
+                              .slice(0, 3)
+                              .map((s) => s.name)
+                              .join('、')}
+                            {failedSources.length > 3 ? ' 等' : ''}
+                            ），可到「播放源管理」里点「测试」查看。
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
