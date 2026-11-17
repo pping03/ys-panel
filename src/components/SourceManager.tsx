@@ -79,6 +79,12 @@ export const SourceManager: React.FC<SourceManagerProps> = ({ onClose }) => {
   const [dirty, setDirty] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
 
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 5000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
   const [name, setName] = useState('');
   const [api, setApi] = useState('');
   const [detail, setDetail] = useState('');
@@ -351,10 +357,12 @@ export const SourceManager: React.FC<SourceManagerProps> = ({ onClose }) => {
     update(merged.sources);
     const problems = [...incoming.errors, ...merged.errors];
     setNotice({
-      kind: problems.length > 0 ? 'error' : 'ok',
+      kind: problems.length > 0 ? 'warn' : 'ok',
       text:
         `已导入 ${incoming.sources.length} 个，点「保存并应用」后生效` +
-        (problems.length > 0 ? `；跳过：${problems.join('；')}` : ''),
+        (problems.length > 0
+          ? `；另有 ${problems.length} 个不是接口地址，已跳过`
+          : ''),
     });
     // 导入的也自动测一遍，不可用的会在列表里标出来
     runChecks(incoming.sources.map((s) => s.api));
@@ -623,16 +631,6 @@ export const SourceManager: React.FC<SourceManagerProps> = ({ onClose }) => {
 
         {/* 底部操作 */}
         <div className='px-5 pt-3 pb-5 border-t border-gray-200 dark:border-gray-700 space-y-3'>
-          {notice && (
-            <div
-              role='status'
-              className={`text-sm p-2.5 rounded-md border ${
-                noticeClass[notice.kind]
-              }`}
-            >
-              {notice.text}
-            </div>
-          )}
           <button
             onClick={handleSave}
             className='w-full px-4 py-2.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 rounded-md transition-colors'
@@ -644,6 +642,21 @@ export const SourceManager: React.FC<SourceManagerProps> = ({ onClose }) => {
           </p>
         </div>
       </div>
+      {notice && (
+        <div
+          role='status'
+          onClick={() => setNotice(null)}
+          className='fixed left-1/2 top-6 z-[1100] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-lg shadow-lg cursor-pointer bg-white dark:bg-gray-900'
+        >
+          <div
+            className={`max-h-32 overflow-hidden text-sm p-3 rounded-lg border ${
+              noticeClass[notice.kind]
+            }`}
+          >
+            {notice.text}
+          </div>
+        </div>
+      )}
     </>
   );
 };
