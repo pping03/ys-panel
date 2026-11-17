@@ -14,7 +14,7 @@ import {
   subscribeToDataUpdates,
 } from '@/lib/db.client';
 import { SearchResult } from '@/lib/types';
-import { processImageUrl } from '@/lib/utils';
+import { IMAGE_MAX_ATTEMPT, processImageUrl } from '@/lib/utils';
 
 import { ImagePlaceholder } from '@/components/ImagePlaceholder';
 
@@ -58,6 +58,7 @@ export default function VideoCard({
   const router = useRouter();
   const [favorited, setFavorited] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [imgAttempt, setImgAttempt] = useState(0);
 
   const isAggregate = from === 'search' && !!items?.length;
 
@@ -278,12 +279,15 @@ export default function VideoCard({
         {!isLoading && <ImagePlaceholder aspectRatio='aspect-[2/3]' />}
         {/* 图片 */}
         <Image
-          src={processImageUrl(actualPoster)}
+          src={processImageUrl(actualPoster, imgAttempt)}
           alt={actualTitle}
           fill
           className='object-cover'
           referrerPolicy='no-referrer'
           onLoadingComplete={() => setIsLoading(true)}
+          onError={() =>
+            setImgAttempt((n) => (n < IMAGE_MAX_ATTEMPT ? n + 1 : n))
+          }
         />
 
         {/* 悬浮遮罩 */}

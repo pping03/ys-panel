@@ -31,8 +31,22 @@ export function getImageProxyUrl(): string | null {
 /**
  * 处理图片 URL，如果设置了图片代理则使用代理
  */
-export function processImageUrl(originalUrl: string): string {
+const DOUBAN_IMG_HOST = /^https?:\/\/img\d*\.doubanio\.com\//i;
+const DOUBAN_IMG_MIRRORS = [
+  'https://img.doubanio.cmliussss.net/',
+  'https://img.doubanio.cmliussss.com/',
+];
+
+export const IMAGE_MAX_ATTEMPT = DOUBAN_IMG_MIRRORS.length;
+
+export function processImageUrl(originalUrl: string, attempt = 0): string {
   if (!originalUrl) return originalUrl;
+
+  const isDouban = DOUBAN_IMG_HOST.test(originalUrl);
+  if (isDouban && attempt < DOUBAN_IMG_MIRRORS.length) {
+    return originalUrl.replace(DOUBAN_IMG_HOST, DOUBAN_IMG_MIRRORS[attempt]);
+  }
+  if (!isDouban && attempt === 0) return originalUrl;
 
   const proxyUrl = getImageProxyUrl();
   if (!proxyUrl) return originalUrl;
