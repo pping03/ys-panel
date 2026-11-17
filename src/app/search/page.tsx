@@ -14,6 +14,11 @@ import {
 } from '@/lib/db.client';
 import { isTitleRelevantToQuery } from '@/lib/searchFilter';
 import { SearchResult } from '@/lib/types';
+import {
+  fetchWithUserSources,
+  getEnabledUserSources,
+  USER_SOURCES_EVENT,
+} from '@/lib/userSources';
 import { yellowWords } from '@/lib/yellow';
 
 import PageLayout from '@/components/PageLayout';
@@ -31,6 +36,39 @@ function SearchPageClient() {
   const [isLoading, setIsLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  // 是否一个播放源都没有（config.json 与本地自定义都为空）
+  const [noSources, setNoSources] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let serverCount: number | null = null;
+
+    const refresh = async () => {
+      if (getEnabledUserSources().length > 0) {
+        if (!cancelled) setNoSources(false);
+        return;
+      }
+      if (serverCount === null) {
+        try {
+          const res = await fetch('/api/search/resources', {
+            cache: 'no-store',
+          });
+          const data = await res.json();
+          serverCount = Array.isArray(data) ? data.length : 0;
+        } catch {
+          return; // 查不到就不提示，避免误报
+        }
+      }
+      if (!cancelled) setNoSources(serverCount === 0);
+    };
+
+    refresh();
+    window.addEventListener(USER_SOURCES_EVENT, refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(USER_SOURCES_EVENT, refresh);
+    };
+  }, []);
 
   // 获取默认聚合设置：只读取用户本地设置，默认为 true
   const getDefaultAggregate = () => {
@@ -163,9 +201,9 @@ function SearchPageClient() {
   const fetchSearchResults = async (query: string) => {
     try {
       setIsLoading(true);
-      const response = await fetch(
-        `/api/search?q=${encodeURIComponent(query.trim())}`
-      );
+      const response = await fetchWithUserSources('/api/search', {
+        q: query.trim(),
+      });
       const data = await response.json();
       let results: SearchResult[] = data.results || [];
       // 兜底过滤：浏览器可能还缓存着旧的接口响应（含无关条目），这里再筛一次
@@ -267,6 +305,13 @@ function SearchPageClient() {
             </div>
           </form>
         </div>
+
+        {noSources && (
+          <div className='max-w-2xl mx-auto -mt-4 mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200'>
+            还没有配置播放源，搜索不会有结果。请点右上角头像，进入「设置 →
+            播放源管理」添加后再搜索。
+          </div>
+        )}
 
         {/* 搜索结果或搜索历史 */}
         <div className='max-w-[95%] mx-auto mt-12 overflow-visible'>

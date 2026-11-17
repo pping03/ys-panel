@@ -62,6 +62,8 @@ PASSWORD=<你的访问密码> pnpm start
 
 修改 `config.json` 后需重新构建/部署才生效。配置为空时，搜索返回空结果，不会报错。
 
+也可以不改文件：登录后点右上角头像 →「播放源管理」，在网页里添加、停用或批量导入播放源，保存后立即生效（只存在当前浏览器里）。
+
 ## 致谢与许可
 
 本项目基于 [lingxuxiaoyao/NovaTV](https://github.com/lingxuxiaoyao/NovaTV)（MIT，基线提交 `12766fd5528d68c2bafc716d25e26cecf6f9750a`）修改，

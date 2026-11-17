@@ -2,12 +2,22 @@
 
 'use client';
 
-import { KeyRound, LogOut, Settings, Shield, User, X } from 'lucide-react';
+import {
+  KeyRound,
+  ListVideo,
+  LogOut,
+  Settings,
+  Shield,
+  User,
+  X,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { getAuthInfoFromBrowserCookie } from '@/lib/auth';
+
+import { SourceManager } from './SourceManager';
 
 interface AuthInfo {
   username?: string;
@@ -19,6 +29,7 @@ export const UserMenu: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [isSourcesOpen, setIsSourcesOpen] = useState(false);
   const [authInfo, setAuthInfo] = useState<AuthInfo | null>(null);
   const [storageType, setStorageType] = useState<string>('localstorage');
   const [mounted, setMounted] = useState(false);
@@ -267,6 +278,12 @@ export const UserMenu: React.FC = () => {
     }
   };
 
+  const handleOpenSources = () => {
+    setIsOpen(false);
+    setIsSettingsOpen(false);
+    setIsSourcesOpen(true);
+  };
+
   // 检查是否显示管理面板按钮
   const showAdminPanel =
     authInfo?.role === 'owner' || authInfo?.role === 'admin';
@@ -342,6 +359,15 @@ export const UserMenu: React.FC = () => {
             <span className='font-medium'>设置</span>
           </button>
 
+          {/* 播放源管理按钮 */}
+          <button
+            onClick={handleOpenSources}
+            className='w-full px-3 py-2 text-left flex items-center gap-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm'
+          >
+            <ListVideo className='w-4 h-4 text-gray-500 dark:text-gray-400' />
+            <span className='font-medium'>播放源管理</span>
+          </button>
+
           {/* 管理面板按钮 */}
           {showAdminPanel && (
             <button
@@ -375,7 +401,6 @@ export const UserMenu: React.FC = () => {
             <LogOut className='w-4 h-4' />
             <span className='font-medium'>登出</span>
           </button>
-
         </div>
       </div>
     </>
@@ -391,7 +416,7 @@ export const UserMenu: React.FC = () => {
       />
 
       {/* 设置面板 */}
-      <div className='fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl z-[1001] p-6'>
+      <div className='fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-1.5rem)] max-w-md max-h-[88vh] overflow-y-auto bg-white dark:bg-gray-900 rounded-xl shadow-xl z-[1001] p-6'>
         {/* 标题栏 */}
         <div className='flex items-center justify-between mb-6'>
           <div className='flex items-center gap-3'>
@@ -417,6 +442,27 @@ export const UserMenu: React.FC = () => {
 
         {/* 设置项 */}
         <div className='space-y-6'>
+          {/* 播放源管理入口 */}
+          <div className='flex items-center justify-between'>
+            <div>
+              <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
+                播放源管理
+              </h4>
+              <p className='text-xs text-gray-500 dark:text-gray-400 mt-1'>
+                添加、停用或导入自己的播放源
+              </p>
+            </div>
+            <button
+              onClick={handleOpenSources}
+              className='shrink-0 px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 rounded-md transition-colors'
+            >
+              管理
+            </button>
+          </div>
+
+          {/* 分割线 */}
+          <div className='border-t border-gray-200 dark:border-gray-700'></div>
+
           {/* 默认聚合搜索结果 */}
           <div className='flex items-center justify-between'>
             <div>
@@ -688,6 +734,14 @@ export const UserMenu: React.FC = () => {
 
       {/* 使用 Portal 将设置面板渲染到 document.body */}
       {isSettingsOpen && mounted && createPortal(settingsPanel, document.body)}
+
+      {/* 播放源管理面板 */}
+      {isSourcesOpen &&
+        mounted &&
+        createPortal(
+          <SourceManager onClose={() => setIsSourcesOpen(false)} />,
+          document.body
+        )}
 
       {/* 使用 Portal 将修改密码面板渲染到 document.body */}
       {isChangePasswordOpen &&

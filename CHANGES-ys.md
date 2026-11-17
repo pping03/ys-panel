@@ -122,7 +122,7 @@
 - 键名（如 `mysource1`）：唯一标识；`api`：vod 接口根地址；`name`：显示名；`detail`：可选。
 - 可以填多个，搜索时会并发查询、按响应速度排序，播放时自动测速选源、失败自动换源。
 - `api_site` 为空时，搜索返回空结果，不会报错。
-- localstorage 模式下片源只能通过 `config.json` 配置（管理后台需要 Redis/Upstash/D1 存储才可用）。
+- localstorage 模式下片源有两种配法：改 `config.json` 后重新部署，或在网页「设置 → 播放源管理」里添加（见第九节，不用重新部署）。管理后台仍需要 Redis/Upstash/D1 存储才可用。
 
 ## 八、验证情况
 
@@ -138,3 +138,45 @@
 - 浏览器里的实际界面（分区切换、手机布局、PWA 安装）未实测，只做了编译和接口层验证。
 - 播放与自动换源没有片源可测，属于只通过编译的代码。
 - 未在 Vercel 上构建过。
+
+## 九、网页内播放源管理（2026-11-17 新增）
+
+入口：右上角头像 →「播放源管理」，或「设置」面板第一项的「管理」按钮（手机端同样可用）。
+
+功能：
+
+- 播放源列表：每个源可单独启用/停用、删除。
+- 添加：名称、接口地址（苹果 CMS V10 的 JSON 接口）、可选的详情地址。
+- 批量导入/导出：文本框粘贴 JSON，格式与 `config.json` 的 `api_site` 相同（也可粘贴整份 `config.json`）；可选「合并」或「替换」。
+- 「保存并应用」后立即生效，下一次搜索、进入播放页就会用上，不需要重新部署。
+- 默认不带任何播放源，界面里只有 `example.com` 占位示例。
+
+实现方式：
+
+- 播放源存在浏览器 localStorage（键 `ys_user_sources`），只在当前设备的当前浏览器里，换设备要重新导入。
+- 搜索页和播放页请求 `/api/search`、`/api/detail` 时：有启用的自定义源就改用 POST，把源列表放在请求体里；服务端把 `config.json` 的源与请求带来的源合并（键名冲突时以用户的为准）。没有自定义源时仍是原来的 GET。
+- POST 的结果一律 `no-store` 不缓存，所以改了播放源不会读到旧结果。
+- 播放页的换源列表、测速、播放中失败自动换源，用的都是这次搜索返回的结果，因此自定义源同样参与。
+- 仍在密码门之后：未登录的 POST 返回 401。
+- 服务端校验（浏览器保存前也校验一遍）：只允许 http/https；不允许带账号密码；拦截本机、内网、链路本地地址（含 `127.x`、`10.x`、`172.16–31.x`、`192.168.x`、`169.254.x`、`::1`、IPv4 映射 IPv6、十进制/十六进制写法的 IP、`localhost`、`.local` 等）；最多 50 个；名称最长 40 字、地址最长 300 字符。不合规的源直接忽略。
+- 环境变量 `YS_ALLOW_PRIVATE_SOURCES=true` 会放开内网拦截，**只用于本地测试，线上不要设**。
+- 搜索页：`config.json` 和自定义源都为空时，搜索框下方显示提示，指向「设置 → 播放源管理」。
+
+涉及文件：
+
+- 新增：`src/lib/userSources.ts`、`src/lib/userSources.server.ts`、`src/components/SourceManager.tsx`
+- 修改：`src/components/UserMenu.tsx`、`src/app/search/page.tsx`、`src/app/play/page.tsx`、`src/app/api/search/route.ts`、`src/app/api/search/one/route.ts`、`src/app/api/search/resources/route.ts`、`src/app/api/detail/route.ts`
+
+已验证（本地虚拟机）：
+
+- `tsc --noEmit`、对改动文件的 `eslint`、`pnpm build` 均通过。
+- 本地 `next start` + 一个返回苹果 CMS 格式 JSON 的本机模拟接口（放开内网拦截的测试实例）：带自定义源 POST `/api/search`，模拟接口确实收到 `?ac=videolist&wd=…` 请求并返回了结果；POST `/api/detail`、`/api/search/one`、`/api/search/resources` 同样生效；响应头为 `no-store`。
+- 不带源时 GET 与 POST 搜索都返回 `{"results":[]}`。
+- 默认严格的实例：同样的本机地址被拦截，模拟接口没有收到任何请求；`file://`、`http://2130706433/`、`[::1]`、`192.168.x`、`169.254.169.254`、带账号密码的地址、`0x7f.1`、`[::ffff:127.0.0.1]` 全部被拒；60 个源只保留 50 个；未登录 POST 返回 401。
+
+未验证 / 已知限制：
+
+- 管理界面本身（添加、开关、导入导出、保存提示、手机上的布局）没有在浏览器里实测，只通过了编译和类型检查。
+- 没有用真实的播放源测过搜索与播放。
+- 内网拦截只看地址里的主机名，不做 DNS 解析：一个公网域名若解析到内网 IP，或接口跳转到内网地址，拦不住。站点在密码门之后且跑在 Vercel 上，风险有限。
+- 未在 Vercel 上构建过这一版。

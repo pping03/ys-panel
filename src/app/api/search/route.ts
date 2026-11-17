@@ -4,6 +4,11 @@ import { ApiSite, getCacheTime, getConfig } from '@/lib/config';
 import { searchFromApi } from '@/lib/downstream';
 import { isTitleRelevantToQuery } from '@/lib/searchFilter';
 import { SearchResult } from '@/lib/types';
+import {
+  NO_STORE_HEADERS,
+  readJsonBody,
+  resolveApiSites,
+} from '@/lib/userSources.server';
 import { yellowWords } from '@/lib/yellow';
 
 export const runtime = 'edge';
@@ -27,26 +32,20 @@ async function searchSiteWithTimeout(
   }
 }
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const query = searchParams.get('q');
+function cacheHeaders(cacheTime: number) {
+  return {
+    'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
+    'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+    'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+  };
+}
 
-  if (!query) {
-    const cacheTime = await getCacheTime();
-    return NextResponse.json(
-      { results: [] },
-      {
-        headers: {
-          'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
-          'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-          'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-        },
-      }
-    );
-  }
-
+async function runSearch(
+  query: string,
+  apiSites: ApiSite[],
+  headers: Record<string, string>
+) {
   const config = await getConfig();
-  const apiSites = config.SourceConfig.filter((site) => !site.disabled);
 
   try {
     const settledResults = await Promise.allSettled(
@@ -79,19 +78,35 @@ export async function GET(request: Request) {
       });
     }
 
-    const cacheTime = await getCacheTime();
-
-    return NextResponse.json(
-      { results: flattenedResults },
-      {
-        headers: {
-          'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
-          'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-          'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-        },
-      }
-    );
+    return NextResponse.json({ results: flattenedResults }, { headers });
   } catch (error) {
     return NextResponse.json({ error: '搜索失败' }, { status: 500 });
   }
+}
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const query = searchParams.get('q');
+  const headers = cacheHeaders(await getCacheTime());
+
+  if (!query) {
+    return NextResponse.json({ results: [] }, { headers });
+  }
+
+  const config = await getConfig();
+  const apiSites = config.SourceConfig.filter((site) => !site.disabled);
+  return runSearch(query, apiSites, headers);
+}
+
+// 带用户自定义播放源的搜索：播放源随 body 传入，结果不缓存
+export async function POST(request: Request) {
+  const body = await readJsonBody(request);
+  const query = typeof body.q === 'string' ? body.q.trim() : '';
+
+  if (!query) {
+    return NextResponse.json({ results: [] }, { headers: NO_STORE_HEADERS });
+  }
+
+  const apiSites = await resolveApiSites(body.sources);
+  return runSearch(query, apiSites, NO_STORE_HEADERS);
 }

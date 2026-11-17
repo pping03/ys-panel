@@ -23,6 +23,7 @@ import {
 } from '@/lib/db.client';
 import { probeM3u8Latency } from '@/lib/sourceSpeedTest';
 import { SearchResult } from '@/lib/types';
+import { fetchWithUserSources } from '@/lib/userSources';
 import {
   getVideoResolutionFromM3u8,
   parseSpeedToKBs,
@@ -682,9 +683,10 @@ function PlayPageClient() {
       id: string
     ): Promise<SearchResult[]> => {
       try {
-        const detailResponse = await fetch(
-          `/api/detail?source=${source}&id=${id}`
-        );
+        const detailResponse = await fetchWithUserSources('/api/detail', {
+          source,
+          id,
+        });
         if (!detailResponse.ok) {
           throw new Error('获取视频详情失败');
         }
@@ -701,9 +703,9 @@ function PlayPageClient() {
     const fetchSourcesData = async (query: string): Promise<SearchResult[]> => {
       // 根据搜索词获取全部源信息
       try {
-        const response = await fetch(
-          `/api/search?q=${encodeURIComponent(query.trim())}`
-        );
+        const response = await fetchWithUserSources('/api/search', {
+          q: query.trim(),
+        });
         if (!response.ok) {
           throw new Error('搜索失败');
         }
