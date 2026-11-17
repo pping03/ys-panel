@@ -53,6 +53,14 @@ function PlayPageClient() {
   // 状态变量（State）
   // -----------------------------------------------------------------------------
   const [loading, setLoading] = useState(true);
+  // 广告提醒：每次打开新的播放页都显示，可手动关闭
+  const [showAdNotice, setShowAdNotice] = useState(true);
+  const adNoticeKey = `${searchParams.get('title') || ''}|${
+    searchParams.get('year') || ''
+  }`;
+  useEffect(() => {
+    setShowAdNotice(true);
+  }, [adNoticeKey]);
   const [loadingStage, setLoadingStage] = useState<
     'searching' | 'preferring' | 'fetching' | 'ready'
   >('searching');
@@ -2326,6 +2334,25 @@ function PlayPageClient() {
             )}
           </h1>
         </div>
+        {showAdNotice && (
+          <div
+            role='alert'
+            className='flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-900/20 dark:text-amber-200'
+          >
+            <span className='flex-1 leading-relaxed'>
+              ⚠️
+              请勿相信视频画面内出现的任何广告（博彩、贷款、加群、扫码等），那是片源自带的内容，与本站无关，谨防上当受骗。
+            </span>
+            <button
+              type='button'
+              aria-label='关闭提示'
+              onClick={() => setShowAdNotice(false)}
+              className='-mr-1 -mt-0.5 shrink-0 rounded p-1 text-lg leading-none text-amber-700 hover:bg-amber-200/60 dark:text-amber-200 dark:hover:bg-amber-800/40'
+            >
+              ×
+            </button>
+          </div>
+        )}
         {/* 第二行：播放器和选集 */}
         <div className='space-y-2'>
           {/* 折叠控制 - 仅在 lg 及以上屏幕显示 */}
