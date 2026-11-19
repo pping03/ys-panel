@@ -1,0 +1,69 @@
+import { NextResponse } from 'next/server';
+
+// TVBox 多仓订阅聚合：ys.999095.xyz/y
+// 只聚合各上游公开发布的订阅地址（指针），不解开、不转换任何一条具体的
+// 采集站接口、解析线路或 spider，不含任何凭证。
+// 上游文件每周重新拉取一次（revalidate 7 天），各上游内容本身每天更新。
+
+const REVALIDATE_SECONDS = 7 * 24 * 60 * 60; // 604800
+
+export const revalidate = REVALIDATE_SECONDS;
+
+// 每天自动更新的多仓订阅文件（上游）
+const UPSTREAMS = [
+  // Lightconer/tvbox-ysc-config：多仓订阅（9 个，饭太硬上次更新失败未收录）
+  'https://raw.githubusercontent.com/Lightconer/tvbox-ysc-config/main/output/%E5%A4%9A%E4%BB%93%E8%AE%A2%E9%98%85.json',
+  // jifeng250/tvbox-sources：多仓 urls
+  'https://raw.githubusercontent.com/jifeng250/tvbox-sources/main/urls.json',
+];
+
+// 固定单条订阅（本身就是订阅地址，不随上游文件变化）
+const EXTRA: { name: string; url: string }[] = [
+  {
+    name: 'hebijunge推荐订阅',
+    url: 'https://raw.githubusercontent.com/hebijunge/tvbox-config/main/tvbox_recommended.json',
+  },
+  {
+    name: 'Lightconer直播',
+    url: 'https://raw.githubusercontent.com/Lightconer/TVBox-Sources/main/output/tvbox.json',
+  },
+];
+
+type Entry = { name: string; url: string };
+
+async function fetchEntries(src: string): Promise<Entry[]> {
+  try {
+    const res = await fetch(src, { next: { revalidate: REVALIDATE_SECONDS } });
+    if (!res.ok) return [];
+    const data: unknown = await res.json();
+    const urls = (data as { urls?: unknown })?.urls;
+    if (!Array.isArray(urls)) return [];
+    return urls.filter(
+      (u): u is Entry =>
+        !!u &&
+        typeof u === 'object' &&
+        typeof (u as Entry).name === 'string' &&
+        typeof (u as Entry).url === 'string',
+    );
+  } catch {
+    return [];
+  }
+}
+
+export async function GET() {
+  const lists = await Promise.all(UPSTREAMS.map(fetchEntries));
+  const merged: Entry[] = [];
+  const seen = new Set<string>();
+  for (const list of [...lists, EXTRA]) {
+    for (const entry of list) {
+      // 上游自己标记失效的条目不同步；同一地址只保留一次
+      if (entry.name.startsWith('❌') || seen.has(entry.url)) continue;
+      seen.add(entry.url);
+      merged.push(entry);
+    }
+  }
+  if (merged.length === 0) {
+    return NextResponse.json({ error: 'upstream unavailable' }, { status: 503 });
+  }
+  return NextResponse.json({ urls: merged });
+}
