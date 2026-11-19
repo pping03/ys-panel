@@ -15,6 +15,8 @@ const UPSTREAMS = [
   'https://raw.githubusercontent.com/Lightconer/tvbox-ysc-config/main/output/%E5%A4%9A%E4%BB%93%E8%AE%A2%E9%98%85.json',
   // jifeng250/tvbox-sources：多仓 urls
   'https://raw.githubusercontent.com/jifeng250/tvbox-sources/main/urls.json',
+  // hengge345666/tvbox-subs：订阅索引（8 条，含自有镜像仓；每周探测维护）
+  'https://raw.githubusercontent.com/hengge345666/tvbox-subs/main/subs.json',
 ];
 
 // 固定单条订阅（本身就是订阅地址，不随上游文件变化）
@@ -26,6 +28,11 @@ const EXTRA: { name: string; url: string }[] = [
   {
     name: 'Lightconer直播',
     url: 'https://raw.githubusercontent.com/Lightconer/TVBox-Sources/main/output/tvbox.json',
+  },
+  {
+    // jifeng250 精选仓（62 站，人工精选；不在其 urls.json 里）
+    name: 'jifeng250精选仓',
+    url: 'https://raw.githubusercontent.com/jifeng250/tvbox-sources/main/curated.json',
   },
 ];
 
