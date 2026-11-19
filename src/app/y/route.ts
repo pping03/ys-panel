@@ -34,6 +34,32 @@ const EXTRA: { name: string; url: string }[] = [
     name: 'jifeng250精选仓',
     url: 'https://raw.githubusercontent.com/jifeng250/tvbox-sources/main/curated.json',
   },
+  // 2026-11-20 第二批：最近更新、响应快、带 4K/高清站（均已实测可拉取、格式有效）
+  {
+    // hanyurn/tvbox-config：每日聚合，98 站，实测 0.46s
+    name: 'hanyurn聚合',
+    url: 'https://raw.githubusercontent.com/hanyurn/tvbox-config/main/agg_true.json',
+  },
+  {
+    // easytv：135 站，其中 45 个站名带 4K/蓝光/1080/超清/原画，实测 1.57s
+    name: 'easytv-4K蓝光',
+    url: 'https://15318.kstore.space/easytv.jpg',
+  },
+  {
+    // 二月红：31 站，其中 10 个 4K/高清站，实测 1.86s
+    name: '二月红',
+    url: 'https://700sjro44343.vicp.fun/eggp/0211/tv.json',
+  },
+  {
+    // cluntop/tvbox 主仓：101 站，实测 0.71s（文件带 // 注释头，TVBox 可认）
+    name: 'cluntop主仓',
+    url: 'https://raw.githubusercontent.com/cluntop/tvbox/main/box.json',
+  },
+  {
+    // 安忆：187 站，其中 18 个 4K/高清站，实测 2.14s（文件带 // 注释头，TVBox 可认）
+    name: '安忆',
+    url: 'https://cnb.cool/ayrjk/tvbox/-/git/raw/main/api.json',
+  },
 ];
 
 type Entry = { name: string; url: string };
