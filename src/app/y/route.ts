@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
 
+import { ALLOWLIST } from './allowlist';
+
 // TVBox 多仓订阅聚合：ys.999095.xyz/y
 // 只聚合各上游公开发布的订阅地址（指针），不解开、不转换任何一条具体的
 // 采集站接口、解析线路或 spider，不含任何凭证。
 // 上游文件每周重新拉取一次（revalidate 7 天），各上游内容本身每天更新。
+// 2026-11-20 优选：按白名单固定 32 条，同一仓库只留一条最优地址。
 
 const REVALIDATE_SECONDS = 7 * 24 * 60 * 60; // 604800
 
@@ -95,8 +98,10 @@ export async function GET() {
       merged.push(entry);
     }
   }
-  if (merged.length === 0) {
+  // 优选：只保留白名单里的 32 条
+  const picked = merged.filter((entry) => ALLOWLIST.includes(entry.url));
+  if (picked.length === 0) {
     return NextResponse.json({ error: 'upstream unavailable' }, { status: 503 });
   }
-  return NextResponse.json({ urls: merged });
+  return NextResponse.json({ urls: picked });
 }
