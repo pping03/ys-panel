@@ -6,6 +6,16 @@ const nextConfig = {
     dirs: ['src'],
   },
 
+  // 弹幕聚合源：/dm/* 转发到 danmu-panel 部署（danmu_api），供 App 的弹幕功能调用。
+  async rewrites() {
+    return [
+      {
+        source: '/dm/:path*',
+        destination: 'https://danmu-panel-ping-b701.vercel.app/:path*',
+      },
+    ];
+  },
+
   reactStrictMode: false,
   swcMinify: true,
 

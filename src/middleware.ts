@@ -227,6 +227,7 @@ function shouldSkipAuth(pathname: string): boolean {
     '/y', // TVBox 多仓订阅聚合（公开地址，内容仅为公开订阅链接，不含任何数据）
     '/zby', // 直播源聚合（公开地址，内容仅为公开直播订阅链接，不含任何数据）
     '/apk', // 应用内更新站（公开的 version.json 与 APK，不含任何数据）
+    '/dm', // 弹幕聚合源（danmu_api 转发，公开的弹幕查询接口）
   ];
 
   return skipPaths.some((path) => pathname.startsWith(path));

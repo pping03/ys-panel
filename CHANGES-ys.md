@@ -199,3 +199,12 @@
 - `src/lib/sourceProbe.ts` 为新增的共用判断逻辑；`downstream.ts` 新增 `searchFromApiDetailed`，原 `searchFromApi` 行为不变（顺带容忍接口返回带 BOM 的 JSON）。
 
 验证：`tsc --noEmit`、改动文件 `eslint`、`pnpm build` 通过；本地 `next start` 加本机模拟接口（仅测试实例开 `YS_ALLOW_PRIVATE_SOURCES=true`）逐项确认了以上分类与 `sourceStatus`，严格实例拦截本机地址且不发请求。界面未在浏览器中实测。
+
+## 十一、弹幕聚合源 /dm（2026-11-22）
+
+- 弹幕聚合服务 danmu_api（huangxd-/danmu_api，fork 到 pping03/danmu_api）单独部署为 Vercel 项目 danmu-panel（danmu-panel-ping-b701.vercel.app），ys 站只做转发，不在本站跑弹幕服务。
+- `next.config.js`：新增 `rewrites()`，`/dm/:path*` 转发到 danmu-panel 部署。
+- `src/middleware.ts`：`skipPaths` 加 `/dm`，弹幕查询接口公开，不走网站密码门。
+- App 的弹幕功能里把 `https://ys.999095.xyz/dm` 当作 danmu_api 源添加即可（`/api/v2/search/anime` 等接口经转发后可用）。
+
+验证：待 Vercel 部署 READY 后用匿名请求验证 `/dm/api/v2/search/anime?keyword=…` 返回 JSON。
