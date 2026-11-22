@@ -226,6 +226,7 @@ function shouldSkipAuth(pathname: string): boolean {
     '/api/session', // 会话校验接口由 middleware 内部调用，必须跳过鉴权防止递归
     '/y', // TVBox 多仓订阅聚合（公开地址，内容仅为公开订阅链接，不含任何数据）
     '/zby', // 直播源聚合（公开地址，内容仅为公开直播订阅链接，不含任何数据）
+    '/apk', // 应用内更新站（公开的 version.json 与 APK，不含任何数据）
   ];
 
   return skipPaths.some((path) => pathname.startsWith(path));
