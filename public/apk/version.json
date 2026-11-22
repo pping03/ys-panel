@@ -1,1 +1,1 @@
-{"apkUrl":"https://ys.999095.xyz/apk/ys-app-v2.0.28.apk","notes":"缓存改回默认：2.0.26、2.0.27 里那个 6 分钟缓存改动把内置播放器弄坏了（每部片都只能走网页播放器），修了两次还是不行，这版直接把缓存改回默认，内置播放器恢复正常；弹幕都在。","versionCode":33,"versionName":"2.0.28"}
+{"apkUrl":"https://ys.999095.xyz/apk/ys-app-v2.0.29.apk","notes":"缓存改成 6 分钟：前向 5 分钟、回看 1 分钟。这次是简单改法，直接配 DefaultLoadControl 的参数，不用包装，内置播放器不会再建不起来；弹幕都在。","versionCode":34,"versionName":"2.0.29"}
