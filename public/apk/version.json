@@ -1,1 +1,1 @@
-{"apkUrl":"https://ys.999095.xyz/apk/ys-app-v2.0.41.apk","notes":"水滴不再被一次软件帧锁死；闪退后自动上报崩溃日志（加密），崩溃前30秒日志一起发；开发者选项里可以模拟崩溃上传和手动上传最近30秒日志。","versionCode":46,"versionName":"2.0.41"}
+{"apkUrl":"https://ys.999095.xyz/apk/ys-app-v2.0.43.apk","notes":"启动时按手机性能分档，并发更少不易闪退；设置了更新域名后，每次打开自动查新版、静默下载好提示安装。","versionCode":48,"versionName":"2.0.43"}
