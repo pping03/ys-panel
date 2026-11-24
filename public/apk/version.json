@@ -1,1 +1,1 @@
-{"apkUrl":"https://ys.999095.xyz/apk/ys-app-v2.0.29.apk","notes":"缓存改成 6 分钟：前向 5 分钟、回看 1 分钟。这次是简单改法，直接配 DefaultLoadControl 的参数，不用包装，内置播放器不会再建不起来；弹幕都在。","versionCode":34,"versionName":"2.0.29"}
+{"apkUrl":"https://ys.999095.xyz/apk/ys-app-v2.0.30.apk","notes":"底部栏改成悬浮胶囊坞，选中项品牌绿高亮；切页加 200ms 横向滑入加淡入；横屏侧边栏不变。","versionCode":35,"versionName":"2.0.30"}
