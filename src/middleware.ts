@@ -228,6 +228,7 @@ function shouldSkipAuth(pathname: string): boolean {
     '/zby', // 直播源聚合（公开地址，内容仅为公开直播订阅链接，不含任何数据）
     '/apk', // 应用内更新站（公开的 version.json 与 APK，不含任何数据）
     '/dm/api', // 弹幕聚合源（danmu_api 转发，仅公开弹幕查询接口；/dm/ 根路径不公开，不展示弹幕源界面）
+    '/api/crash-report', // 崩溃上报（App 下次启动时 POST，仅转发崩溃日志邮件给站长，不含任何站内数据）
   ];
 
   return skipPaths.some((path) => pathname.startsWith(path));
